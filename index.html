@@ -83,12 +83,14 @@ let start=Number(localStorage.getItem('pm_l3_start')||0);
 function pad(n){return String(n).padStart(2,'0')}
 function elapsed(){let s=Math.floor((Date.now()-start)/1000);return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`}
 setInterval(()=>{if(start) document.getElementById('timer').textContent=elapsed()},1000);
+document.addEventListener('DOMContentLoaded',()=>{const inp=document.getElementById('studentName'); if(inp){inp.addEventListener('keydown',e=>{if(e.key==='Enter') unlock();});}});
 function save(){localStorage.setItem('pm_l3_idx',idx);localStorage.setItem('pm_l3_answers',JSON.stringify(answers));}
 function unlock(){
   const n=document.getElementById('studentName').value.trim(); if(!n){alert('Digite o nome do aluno.');return;}
   name=n; localStorage.setItem('pm_l3_name',name); if(!start){start=Date.now();localStorage.setItem('pm_l3_start',start)}
   const msg=encodeURIComponent(`Professor Moreira, sou ${name} e estou iniciando o Quiz Lista 3.`);
-  window.open(`https://wa.me/${WHATSAPP}?text=${msg}`,'_blank');
+  try{ window.open(`https://wa.me/${WHATSAPP}?text=${msg}`,'_blank'); }catch(e){}
+  mode='question';
   render();
 }
 function render(){
@@ -136,8 +138,7 @@ Erros: ${QUESTIONS.length-correct}
 Percentual: ${perc}%
 
 Gabarito do aluno:
-${lines.join('
-')}`;
+${lines.join('\n')}`;
  document.getElementById('final').innerHTML=`<h2>Simulado concluído</h2><p><b>Aluno:</b> ${name}</p><p><b>Tempo:</b> ${elapsed()}</p><p><b>Respondidas:</b> ${Object.keys(answers).length}/${QUESTIONS.length}</p><textarea readonly>${texto}</textarea><br><br><button class="ok" style="width:100%" onclick="sendResult()">Enviar gabarito ao Professor</button><br><br><button class="secondary" style="width:100%" onclick="restart()">Recomeçar</button>`;
 }
 function sendResult(){
@@ -152,8 +153,7 @@ Erros: ${QUESTIONS.length-correct}
 Percentual: ${perc}%
 
 Gabarito do aluno:
-${lines.join('
-')}`;
+${lines.join('\n')}`;
  window.open(`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`,'_blank');
 }
 function restart(){ if(confirm('Deseja apagar as respostas e recomeçar?')){localStorage.removeItem('pm_l3_idx');localStorage.removeItem('pm_l3_answers');localStorage.removeItem('pm_l3_start');idx=0;answers={};start=Date.now();localStorage.setItem('pm_l3_start',start);mode='question';document.getElementById('bottomNav').classList.remove('hidden');render();} }
