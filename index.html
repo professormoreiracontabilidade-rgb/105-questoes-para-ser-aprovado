@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Quiz Mobile - Lista 3 Professor Moreira</title>
+<title>Quiz Mobile - Lista 3 Professor Moreira - Caneta Wacom</title>
 <style>
 :root{--azul:#082b4a;--azul2:#0f4778;--verde:#128043;--vermelho:#b42318;--fundo:#eef4fb;--card:#ffffff;--texto:#111827;--muted:#6b7280;--amarelo:#fff3bf;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -40,6 +40,19 @@ button{border:0;border-radius:16px;padding:14px 16px;font-weight:900;font-size:1
 .hidden{display:none!important} .small{font-size:13px;color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-top:12px} .dot{padding:8px 0;border-radius:10px;background:#e5e7eb;color:#111;font-size:12px;font-weight:bold} .dot.answered{background:#bbf7d0} .dot.current{outline:3px solid var(--azul)}
 .final h2{color:var(--azul)} textarea{width:100%;height:160px;border:2px solid #dbe7f3;border-radius:14px;padding:12px;font-size:14px}
+
+.draw-toolbar{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 10px;background:#eef6ff;border:1px solid #cfe1f5;border-radius:16px;padding:8px;position:sticky;top:92px;z-index:8}
+.draw-toolbar .tool{font-size:13px;padding:9px 10px;border-radius:12px;background:#e6eef7;color:#082b4a;box-shadow:none;white-space:nowrap}
+.draw-toolbar .tool.active{background:#082b4a;color:white;outline:2px solid #facc15}
+.draw-toolbar .danger-mini{background:#fee2e2!important;color:#991b1b!important}
+.paper-draw{position:relative;background:#fff;border:2px solid #cfe1f5;border-radius:16px;overflow:hidden;min-height:58vh;box-shadow:inset 0 0 0 1px rgba(8,43,74,.04)}
+.paper-content{position:relative;z-index:1;padding:2px;min-height:58vh}
+.ink-canvas{position:absolute;left:0;top:0;z-index:3;touch-action:none;display:block;background:transparent;pointer-events:auto}
+.ink-canvas.pen-cursor{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><text y='24' font-size='24'>✒️</text></svg>") 2 26, crosshair;}
+.ink-canvas.eraser-cursor{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><text y='24' font-size='24'>🧽</text></svg>") 8 24, cell;}
+.pen-help{font-size:12px;color:#475569;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;margin-top:9px;padding:9px;line-height:1.35}
+.study-card{min-height:70vh}
+
 @media print{.bottom,.header .progress,.lock{display:none} body{background:white} .app{max-width:none;padding:0} .card{box-shadow:none;border:1px solid #ccc;break-inside:avoid}}
 </style>
 </head>
@@ -92,41 +105,95 @@ const WHATSAPP='5561985323574';
 let idx=Number(localStorage.getItem('pm_l3_idx')||0);
 let mode='question';
 
-function wacomBox(id){
-  return `<div class="wacom-wrap">
-    <div class="wacom-head"><span>✍️ Área de escrita — caneta Wacom, mouse ou toque</span><button class="wacom-clear" onclick="clearWacom('${id}')">Limpar</button></div>
-    <canvas class="wacom-canvas" data-wacom="${id}"></canvas>
-    <div class="wacom-note">Escreva diretamente nesta área. No navegador, a Wacom funciona como ponteiro/mouse.</div>
-  </div>`;
+function wacomBox(id, innerHtml){
+  return `<div class="draw-toolbar" data-toolbar="${id}">
+    <button class="tool active" onclick="setTool('${id}','draw')">✏️ Caneta</button>
+    <button class="tool" onclick="setColor('${id}','blue')">🔵 Azul</button>
+    <button class="tool" onclick="setColor('${id}','red')">🔴 Vermelha</button>
+    <button class="tool" onclick="setColor('${id}','black')">⚫ Preta</button>
+    <button class="tool" onclick="setTool('${id}','erase')">🧽 Borracha</button>
+    <button class="tool" onclick="setTool('${id}','off')">👆 Responder</button>
+    <button class="tool danger-mini" onclick="clearWacom('${id}')">🗑️ Limpar</button>
+  </div>
+  <div class="paper-draw" id="paper_${id}">
+    <div class="paper-content">${innerHtml}</div>
+    <canvas class="ink-canvas" data-wacom="${id}"></canvas>
+  </div>
+  <div class="pen-help">Para marcar alternativa, toque em <b>👆 Responder</b>. Para escrever, toque em <b>✏️ Caneta</b>. A caneta Wacom funciona como ponteiro do navegador.</div>`;
+}
+const penState={};
+function state(id){
+  if(!penState[id]) penState[id]={tool:'draw', color:'#0f4778', width:3, active:true};
+  return penState[id];
+}
+function updateToolbar(id){
+  const st=state(id);
+  const toolbar=document.querySelector(`[data-toolbar="${id}"]`);
+  if(toolbar){toolbar.querySelectorAll('.tool').forEach(b=>b.classList.remove('active'));}
+  const c=document.querySelector(`canvas[data-wacom="${id}"]`);
+  if(c){
+    c.style.pointerEvents=st.active?'auto':'none';
+    c.classList.toggle('eraser-cursor',st.tool==='erase');
+    c.classList.toggle('pen-cursor',st.tool!=='erase');
+  }
+}
+function setTool(id,tool){
+  const st=state(id); st.tool=tool; st.active=tool!=='off';
+  const toolbar=document.querySelector(`[data-toolbar="${id}"]`);
+  if(toolbar){
+    toolbar.querySelectorAll('.tool').forEach(b=>b.classList.remove('active'));
+    const labels={draw:'✏️ Caneta',erase:'🧽 Borracha',off:'👆 Responder'};
+    [...toolbar.querySelectorAll('.tool')].find(b=>b.textContent.includes(labels[tool]||''))?.classList.add('active');
+  }
+  updateToolbar(id);
+}
+function setColor(id,color){
+  const st=state(id); st.tool='draw'; st.active=true;
+  st.color=color==='red'?'#dc2626':color==='black'?'#111827':'#0f4778';
+  const toolbar=document.querySelector(`[data-toolbar="${id}"]`);
+  if(toolbar){toolbar.querySelectorAll('.tool').forEach(b=>b.classList.remove('active'));}
+  updateToolbar(id);
 }
 function setupWacom(){
   document.querySelectorAll('canvas[data-wacom]').forEach(canvas=>{
-    if(canvas.dataset.ready==='1') return;
-    canvas.dataset.ready='1';
     const id=canvas.dataset.wacom;
     const ctx=canvas.getContext('2d');
     function resize(){
-      const rect=canvas.getBoundingClientRect();
+      const parent=canvas.parentElement;
+      const rect=parent.getBoundingClientRect();
       const dpr=window.devicePixelRatio||1;
-      const saved=canvas.toDataURL();
+      const previous=canvas.width?canvas.toDataURL('image/png'):localStorage.getItem('pm_wacom_'+id);
       canvas.width=Math.max(1,Math.floor(rect.width*dpr));
       canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+      canvas.style.width=rect.width+'px';
+      canvas.style.height=rect.height+'px';
       ctx.setTransform(dpr,0,0,dpr,0,0);
-      ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=3; ctx.strokeStyle='#111827';
-      const old=localStorage.getItem('pm_wacom_'+id) || saved;
-      if(old && old.startsWith('data:image')){
-        const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height); img.src=old;
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      const saved=localStorage.getItem('pm_wacom_'+id) || previous;
+      if(saved && saved.startsWith('data:image')){
+        const img=new Image();
+        img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height);
+        img.src=saved;
       }
+      updateToolbar(id);
     }
     resize();
+    if(canvas.dataset.ready==='1') return;
+    canvas.dataset.ready='1';
     let drawing=false, last=null;
     function pos(e){const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top};}
     function start(e){e.preventDefault(); drawing=true; canvas.setPointerCapture?.(e.pointerId); last=pos(e);}
     function move(e){
       if(!drawing) return; e.preventDefault();
-      const p=pos(e); const pressure=e.pressure && e.pressure>0 ? e.pressure : 0.7;
-      ctx.lineWidth=2+pressure*4;
-      ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p;
+      const st=state(id); const p=pos(e);
+      if(st.tool==='erase'){
+        ctx.save(); ctx.globalCompositeOperation='destination-out'; ctx.lineWidth=22; ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); ctx.restore();
+      }else{
+        const pressure=e.pressure && e.pressure>0 ? e.pressure : 0.7;
+        ctx.globalCompositeOperation='source-over'; ctx.strokeStyle=st.color; ctx.lineWidth=st.width+pressure*3;
+        ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+      }
+      last=p;
     }
     function end(e){ if(!drawing) return; e.preventDefault(); drawing=false; localStorage.setItem('pm_wacom_'+id, canvas.toDataURL('image/png')); }
     canvas.addEventListener('pointerdown',start);
@@ -134,6 +201,7 @@ function setupWacom(){
     canvas.addEventListener('pointerup',end);
     canvas.addEventListener('pointercancel',end);
     canvas.addEventListener('pointerleave',end);
+    window.addEventListener('resize',()=>setTimeout(resize,80));
   });
 }
 function clearWacom(id){
@@ -169,8 +237,9 @@ function renderQuestion(){
   document.getElementById('quiz').classList.remove('hidden'); document.getElementById('answer').classList.add('hidden'); document.getElementById('final').classList.add('hidden');
   document.getElementById('mainBtn').textContent='Comentários'; document.getElementById('mainBtn').onclick=showAnswer;
   const q=QUESTIONS[idx]; const sel=answers[q.n]||'';
-  document.getElementById('questionCard').innerHTML=`<span class="qnum">Questão ${String(q.n).padStart(3,'0')}</span><div class="statement">${q.text}</div>`+
-    q.alts.map(a=>`<button class="alt ${sel===a.letter?'selected':''}" onclick="selectAlt('${a.letter}')"><span class="letter">${a.letter}</span><span>${a.text}</span></button>`).join('')+wacomBox('q_'+q.n);
+  const inner=`<span class="qnum">Questão ${String(q.n).padStart(3,'0')}</span><div class="statement">${q.text}</div>`+
+    q.alts.map(a=>`<button class="alt ${sel===a.letter?'selected':''}" onclick="selectAlt('${a.letter}')"><span class="letter">${a.letter}</span><span>${a.text}</span></button>`).join('');
+  document.getElementById('questionCard').innerHTML=wacomBox('q_'+q.n, inner);
   setupWacom();
 }
 function selectAlt(l){answers[QUESTIONS[idx].n]=l;save();renderQuestion();renderGrid();}
@@ -179,11 +248,12 @@ function renderAnswer(){
   document.getElementById('mainBtn').textContent= idx===QUESTIONS.length-1 ? 'Finalizar' : 'Próxima questão'; document.getElementById('mainBtn').onclick=next;
   renderGrid();
   const q=QUESTIONS[idx]; const sel=answers[q.n]||'Não marcada';
-  document.getElementById('answerCard').innerHTML=`<span class="qnum">Comentário da Questão ${String(q.n).padStart(3,'0')}</span>
+  const inner=`<span class="qnum">Comentário da Questão ${String(q.n).padStart(3,'0')}</span>
   <div class="answerBox">Sua resposta: <b>${sel}</b><br>Gabarito: <span class="gabarito">${q.answer}</span></div>
   <div class="statement">${q.text}</div>`+
   q.alts.map(a=>`<div class="alt ${a.letter===q.answer?'correct':(sel===a.letter?'wrong':'')}"><span class="letter">${a.letter}</span><span>${a.text}</span></div>`).join('')+
-  `<div class="comment">${q.comment}</div>`+wacomBox('c_'+q.n);
+  `<div class="comment">${q.comment}</div>`;
+  document.getElementById('answerCard').innerHTML=wacomBox('c_'+q.n, inner);
   setupWacom();
 }
 function renderGrid(){
