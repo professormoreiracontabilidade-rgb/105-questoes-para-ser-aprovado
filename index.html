@@ -15,12 +15,15 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(
 .meta{display:flex;justify-content:space-between;font-size:12px;margin-top:8px;opacity:.96}
 .card{background:var(--card);border:1px solid #dbe7f3;border-radius:20px;padding:18px;margin-top:14px;box-shadow:0 10px 24px rgba(15,71,120,.10);}
 .study-card{min-height:58vh;}
-.wacom-space{min-height:170px;margin-top:16px;border-radius:16px;background:linear-gradient(180deg,#ffffff,#fbfdff);border:2px dashed #dbe7f3;touch-action:none;}
-.wacom-note{font-size:12px;color:var(--muted);margin-top:8px;text-align:center;}
+.wacom-wrap{margin-top:16px;border-radius:16px;background:linear-gradient(180deg,#ffffff,#fbfdff);border:2px dashed #b9cce1;overflow:hidden;}
+.wacom-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#f1f7ff;border-bottom:1px solid #dbe7f3;font-size:12px;color:var(--azul);font-weight:900;}
+.wacom-clear{border-radius:10px;padding:7px 10px;font-size:12px;background:#fee2e2;color:#991b1b;box-shadow:none;}
+.wacom-canvas{display:block;width:100%;height:210px;background:white;touch-action:none;cursor:crosshair;}
+.wacom-note{font-size:12px;color:var(--muted);padding:8px 10px;text-align:center;background:#fbfdff;}
 .controls-card{padding:12px;position:sticky;top:98px;z-index:4;}
 .nav.four{grid-template-columns:1fr 1fr 1fr 1fr;}
 .restart{background:#fff7ed;color:#9a3412;border:2px solid #fed7aa;}
-@media(max-width:430px){.nav.four{grid-template-columns:1fr 1fr;}button{font-size:14px;padding:12px 10px}.study-card{min-height:54vh}.wacom-space{min-height:150px}}
+@media(max-width:430px){.nav.four{grid-template-columns:1fr 1fr;}button{font-size:14px;padding:12px 10px}.study-card{min-height:54vh}.wacom-canvas{height:190px}}
 .lock{margin-top:20px;text-align:center} .lock h1{font-size:26px;margin:8px 0 8px;color:var(--azul)} .lock p{color:#374151;line-height:1.45}
 input[type=text]{width:100%;font-size:18px;padding:15px;border-radius:14px;border:2px solid #c7d7e8;margin:12px 0;background:white}
 button{border:0;border-radius:16px;padding:14px 16px;font-weight:900;font-size:16px;cursor:pointer}
@@ -88,6 +91,56 @@ const QUESTIONS = [{"n": 1, "text": "Segundo a NBC TG Estrutura Conceitual, para
 const WHATSAPP='5561985323574';
 let idx=Number(localStorage.getItem('pm_l3_idx')||0);
 let mode='question';
+
+function wacomBox(id){
+  return `<div class="wacom-wrap">
+    <div class="wacom-head"><span>✍️ Área de escrita — caneta Wacom, mouse ou toque</span><button class="wacom-clear" onclick="clearWacom('${id}')">Limpar</button></div>
+    <canvas class="wacom-canvas" data-wacom="${id}"></canvas>
+    <div class="wacom-note">Escreva diretamente nesta área. No navegador, a Wacom funciona como ponteiro/mouse.</div>
+  </div>`;
+}
+function setupWacom(){
+  document.querySelectorAll('canvas[data-wacom]').forEach(canvas=>{
+    if(canvas.dataset.ready==='1') return;
+    canvas.dataset.ready='1';
+    const id=canvas.dataset.wacom;
+    const ctx=canvas.getContext('2d');
+    function resize(){
+      const rect=canvas.getBoundingClientRect();
+      const dpr=window.devicePixelRatio||1;
+      const saved=canvas.toDataURL();
+      canvas.width=Math.max(1,Math.floor(rect.width*dpr));
+      canvas.height=Math.max(1,Math.floor(rect.height*dpr));
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=3; ctx.strokeStyle='#111827';
+      const old=localStorage.getItem('pm_wacom_'+id) || saved;
+      if(old && old.startsWith('data:image')){
+        const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height); img.src=old;
+      }
+    }
+    resize();
+    let drawing=false, last=null;
+    function pos(e){const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top};}
+    function start(e){e.preventDefault(); drawing=true; canvas.setPointerCapture?.(e.pointerId); last=pos(e);}
+    function move(e){
+      if(!drawing) return; e.preventDefault();
+      const p=pos(e); const pressure=e.pressure && e.pressure>0 ? e.pressure : 0.7;
+      ctx.lineWidth=2+pressure*4;
+      ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p;
+    }
+    function end(e){ if(!drawing) return; e.preventDefault(); drawing=false; localStorage.setItem('pm_wacom_'+id, canvas.toDataURL('image/png')); }
+    canvas.addEventListener('pointerdown',start);
+    canvas.addEventListener('pointermove',move);
+    canvas.addEventListener('pointerup',end);
+    canvas.addEventListener('pointercancel',end);
+    canvas.addEventListener('pointerleave',end);
+  });
+}
+function clearWacom(id){
+  localStorage.removeItem('pm_wacom_'+id);
+  const c=document.querySelector(`canvas[data-wacom="${id}"]`);
+  if(c){const ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height);}
+}
 let answers=JSON.parse(localStorage.getItem('pm_l3_answers')||'{}');
 let name=localStorage.getItem('pm_l3_name')||'';
 let start=Number(localStorage.getItem('pm_l3_start')||0);
@@ -117,7 +170,8 @@ function renderQuestion(){
   document.getElementById('mainBtn').textContent='Comentários'; document.getElementById('mainBtn').onclick=showAnswer;
   const q=QUESTIONS[idx]; const sel=answers[q.n]||'';
   document.getElementById('questionCard').innerHTML=`<span class="qnum">Questão ${String(q.n).padStart(3,'0')}</span><div class="statement">${q.text}</div>`+
-    q.alts.map(a=>`<button class="alt ${sel===a.letter?'selected':''}" onclick="selectAlt('${a.letter}')"><span class="letter">${a.letter}</span><span>${a.text}</span></button>`).join('')+`<div class="wacom-space"></div><div class="wacom-note">Área livre da tela para anotações com caneta Wacom.</div>`;
+    q.alts.map(a=>`<button class="alt ${sel===a.letter?'selected':''}" onclick="selectAlt('${a.letter}')"><span class="letter">${a.letter}</span><span>${a.text}</span></button>`).join('')+wacomBox('q_'+q.n);
+  setupWacom();
 }
 function selectAlt(l){answers[QUESTIONS[idx].n]=l;save();renderQuestion();renderGrid();}
 function renderAnswer(){
@@ -129,7 +183,8 @@ function renderAnswer(){
   <div class="answerBox">Sua resposta: <b>${sel}</b><br>Gabarito: <span class="gabarito">${q.answer}</span></div>
   <div class="statement">${q.text}</div>`+
   q.alts.map(a=>`<div class="alt ${a.letter===q.answer?'correct':(sel===a.letter?'wrong':'')}"><span class="letter">${a.letter}</span><span>${a.text}</span></div>`).join('')+
-  `<div class="comment">${q.comment}</div><div class="wacom-space"></div><div class="wacom-note">Área livre da tela para anotações com caneta Wacom.</div>`;
+  `<div class="comment">${q.comment}</div>`+wacomBox('c_'+q.n);
+  setupWacom();
 }
 function renderGrid(){
   document.getElementById('grid').innerHTML=QUESTIONS.map((q,i)=>`<button class="dot ${answers[q.n]?'answered':''} ${i===idx?'current':''}" onclick="idx=${i};mode='question';save();render()">${q.n}</button>`).join('');
